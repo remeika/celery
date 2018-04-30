@@ -2,6 +2,12 @@
 """Redis result store backend."""
 from __future__ import absolute_import, unicode_literals
 
+from ssl import (
+    CERT_REQUIRED,
+    CERT_OPTIONAL,
+    CERT_NONE,
+)
+
 from functools import partial
 
 from kombu.utils.functional import retry_over_time
@@ -196,6 +202,30 @@ class RedisBackend(base.BaseKeyValueStoreBackend, async.AsyncBackendMixin):
             connparams.pop('socket_connect_timeout')
         else:
             connparams['db'] = path
+
+            if scheme == 'rediss':
+                connparams['connection_class'] = redis.SSLConnection
+                ssl_cert_reqs = query.pop('ssl_cert_reqs', 'MISSING')
+                if ssl_cert_reqs == 'CERT_REQUIRED':
+                    connparams['ssl_cert_reqs'] = CERT_REQUIRED
+                elif ssl_cert_reqs == 'CERT_OPTIONAL':
+                    logger.warn("""
+                        Setting ssl_cert_reqs=CERT_OPTIONAL when connecting to
+                        redis means that celery might not valdate the identity
+                        of the redis broker when connecting. This leaves you
+                        vulnerable to man in the middle attacks.""")
+                    connparams['ssl_cert_reqs'] = CERT_OPTIONAL
+                elif ssl_cert_reqs == 'CERT_NONE':
+                    logger.warn("""
+                        Setting ssl_cert_reqs=CERT_NONE when connecting to
+                        redis means that celery will not valdate the identity
+                        of the redis broker when connecting. This leaves you
+                        vulnerable to man in the middle attacks.""")
+                    connparams['ssl_cert_reqs'] = CERT_NONE
+                else:
+                    raise ValueError("""
+                        A rediss:// URL must have parameter ssl_cert_reqs
+                        be CERT_REQUIRED, CERT_OPTIONAL, or CERT_NONE""")
 
         # db may be string and start with / like in kombu.
         db = connparams.get('db') or 0
