@@ -7,6 +7,7 @@ from ssl import (
     CERT_OPTIONAL,
     CERT_NONE,
 )
+from urllib import unquote 
 
 from functools import partial
 
@@ -48,6 +49,23 @@ the Redis result store backend.
 E_REDIS_SENTINEL_MISSING = """
 You need to install the redis library with support of \
 sentinel in order to use the Redis result store backend.
+"""
+
+W_REDIS_SSL_CERT_OPTIONAL = """
+Setting ssl_cert_reqs=CERT_OPTIONAL when connecting to redis means that celery \
+might not valdate the identity of the redis broker when connecting. This \
+leaves you vulnerable to man in the middle attacks.
+"""
+
+W_REDIS_SSL_CERT_NONE = """
+Setting ssl_cert_reqs=CERT_NONE when connecting to redis means that celery \
+will not valdate the identity of the redis broker when connecting. This leaves \
+you vulnerable to man in the middle attacks.
+"""
+
+E_REDIS_SSL_CERT_REQS_MISSING = """
+A rediss:// URL must have parameter ssl_cert_reqs be CERT_REQUIRED, \
+CERT_OPTIONAL, or CERT_NONE
 """
 
 E_LOST = 'Connection to Redis lost: Retry (%s/%s) %s.'
@@ -200,32 +218,30 @@ class RedisBackend(base.BaseKeyValueStoreBackend, async.AsyncBackendMixin):
             connparams.pop('host', None)
             connparams.pop('port', None)
             connparams.pop('socket_connect_timeout')
-        else:
+        elif scheme == 'redis':
             connparams['db'] = path
+        elif scheme == 'rediss':
+            connparams['db'] = path
+            connparams['connection_class'] = redis.SSLConnection
+            # The following parameters, if present in the URL, are encoded. We
+            # must add the decoded values to connparams.
+            for ssl_setting in ['ssl_ca_certs', 'ssl_certfile', 'ssl_keyfile']:
+                ssl_val = query.pop(ssl_setting, None)
+                if ssl_val:
+                    connparams[ssl_setting] = unquote(ssl_val)
+            ssl_cert_reqs = query.pop('ssl_cert_reqs', 'MISSING')
+            if ssl_cert_reqs == 'CERT_REQUIRED':
+                connparams['ssl_cert_reqs'] = CERT_REQUIRED
+            elif ssl_cert_reqs == 'CERT_OPTIONAL':
+                logger.warn(W_REDIS_SSL_CERT_OPTIONAL)
+                connparams['ssl_cert_reqs'] = CERT_OPTIONAL
+            elif ssl_cert_reqs == 'CERT_NONE':
+                logger.warn(W_REDIS_SSL_CERT_NONE)
+                connparams['ssl_cert_reqs'] = CERT_NONE
+            else:
+                raise ValueError(E_REDIS_SSL_CERT_REQS_MISSING)
+            
 
-            if scheme == 'rediss':
-                connparams['connection_class'] = redis.SSLConnection
-                ssl_cert_reqs = query.pop('ssl_cert_reqs', 'MISSING')
-                if ssl_cert_reqs == 'CERT_REQUIRED':
-                    connparams['ssl_cert_reqs'] = CERT_REQUIRED
-                elif ssl_cert_reqs == 'CERT_OPTIONAL':
-                    logger.warn("""
-                        Setting ssl_cert_reqs=CERT_OPTIONAL when connecting to
-                        redis means that celery might not valdate the identity
-                        of the redis broker when connecting. This leaves you
-                        vulnerable to man in the middle attacks.""")
-                    connparams['ssl_cert_reqs'] = CERT_OPTIONAL
-                elif ssl_cert_reqs == 'CERT_NONE':
-                    logger.warn("""
-                        Setting ssl_cert_reqs=CERT_NONE when connecting to
-                        redis means that celery will not valdate the identity
-                        of the redis broker when connecting. This leaves you
-                        vulnerable to man in the middle attacks.""")
-                    connparams['ssl_cert_reqs'] = CERT_NONE
-                else:
-                    raise ValueError("""
-                        A rediss:// URL must have parameter ssl_cert_reqs
-                        be CERT_REQUIRED, CERT_OPTIONAL, or CERT_NONE""")
 
         # db may be string and start with / like in kombu.
         db = connparams.get('db') or 0

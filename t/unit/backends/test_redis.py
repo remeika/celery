@@ -1,7 +1,6 @@
 from __future__ import absolute_import, unicode_literals
 
 import random
-import ssl
 from contextlib import contextmanager
 from datetime import timedelta
 from pickle import dumps, loads
@@ -245,7 +244,7 @@ class test_RedisBackend:
     @skip.unless_module('redis')
     def test_backend_ssl(self):
         self.app.conf.redis_backend_use_ssl = {
-            'ssl_cert_reqs': ssl.CERT_REQUIRED,
+            'ssl_cert_reqs': CERT_REQUIRED,
             'ssl_ca_certs': '/path/to/ca.crt',
             'ssl_certfile': '/path/to/client.crt',
             'ssl_keyfile': '/path/to/client.key',
@@ -255,6 +254,7 @@ class test_RedisBackend:
         x = self.Backend(
             'redis://:bosco@vandelay.com:123//1', app=self.app,
         )
+        from ssl import CERT_REQUIRED
         assert x.connparams
         assert x.connparams['host'] == 'vandelay.com'
         assert x.connparams['db'] == 1
@@ -262,7 +262,7 @@ class test_RedisBackend:
         assert x.connparams['password'] == 'bosco'
         assert x.connparams['socket_timeout'] == 30.0
         assert x.connparams['socket_connect_timeout'] == 100.0
-        assert x.connparams['ssl_cert_reqs'] == ssl.CERT_REQUIRED
+        assert x.connparams['ssl_cert_reqs'] == CERT_REQUIRED
         assert x.connparams['ssl_ca_certs'] == '/path/to/ca.crt'
         assert x.connparams['ssl_certfile'] == '/path/to/client.crt'
         assert x.connparams['ssl_keyfile'] == '/path/to/client.key'
@@ -277,6 +277,7 @@ class test_RedisBackend:
         x = self.Backend(
             'rediss://:bosco@vandelay.com:123//1?ssl_cert_reqs=CERT_REQUIRED', app=self.app,
         )
+        from ssl import CERT_REQUIRED
         assert x.connparams
         assert x.connparams['host'] == 'vandelay.com'
         assert x.connparams['db'] == 1
@@ -284,10 +285,27 @@ class test_RedisBackend:
         assert x.connparams['password'] == 'bosco'
         assert x.connparams['socket_timeout'] == 30.0
         assert x.connparams['socket_connect_timeout'] == 100.0
-        assert x.connparams['ssl_cert_reqs'] == ssl.CERT_REQUIRED
+        assert x.connparams['ssl_cert_reqs'] == CERT_REQUIRED
 
         from redis.connection import SSLConnection
         assert x.connparams['connection_class'] is SSLConnection
+
+    @skip.unless_module('redis')
+    def test_backend_ssl_url_options(self):
+        x = self.Backend(
+            'rediss://:bosco@vandelay.com:123//1?ssl_cert_reqs=CERT_NONE&ssl_ca_certs=%2Fvar%2Fssl%2Fmyca.pem&ssl_certfile=%2Fvar%2Fssl%2Fredis-server-cert.pem&ssl_keyfile=%2Fvar%2Fssl%2Fprivate%2Fworker-key.pem',
+            app=self.app,
+        )
+        from ssl import CERT_NONE
+        assert x.connparams
+        assert x.connparams['host'] == 'vandelay.com'
+        assert x.connparams['db'] == 1
+        assert x.connparams['port'] == 123
+        assert x.connparams['password'] == 'bosco'
+        assert x.connparams['ssl_cert_reqs'] == CERT_NONE
+        assert x.connparams['ssl_ca_certs'] == '/var/ssl/myca.pem'
+        assert x.connparams['ssl_certfile'] == '/var/ssl/redis-server-cert.pem'
+        assert x.connparams['ssl_keyfile'] == '/var/ssl/private/worker-key.pem'
 
     def test_compat_propertie(self):
         x = self.Backend(
