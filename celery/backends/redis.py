@@ -7,7 +7,7 @@ from ssl import (
     CERT_OPTIONAL,
     CERT_NONE,
 )
-from urllib import unquote 
+from urllib import unquote
 
 from functools import partial
 
@@ -218,10 +218,10 @@ class RedisBackend(base.BaseKeyValueStoreBackend, async.AsyncBackendMixin):
             connparams.pop('host', None)
             connparams.pop('port', None)
             connparams.pop('socket_connect_timeout')
-        elif scheme == 'redis':
+        else:
             connparams['db'] = path
-        elif scheme == 'rediss':
-            connparams['db'] = path
+
+        if scheme == 'rediss':
             connparams['connection_class'] = redis.SSLConnection
             # The following parameters, if present in the URL, are encoded. We
             # must add the decoded values to connparams.
@@ -240,7 +240,6 @@ class RedisBackend(base.BaseKeyValueStoreBackend, async.AsyncBackendMixin):
                 connparams['ssl_cert_reqs'] = CERT_NONE
             else:
                 raise ValueError(E_REDIS_SSL_CERT_REQS_MISSING)
-            
 
 
         # db may be string and start with / like in kombu.
